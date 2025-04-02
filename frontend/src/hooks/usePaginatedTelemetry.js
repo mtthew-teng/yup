@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { getPaginatedTelemetry } from "../services/telemetryService";
+import { useState, useEffect, useCallback } from "react";
+import { getPaginatedTelemetry, subscribeTelemetry } from "../services/telemetryService";
 
 const usePaginatedTelemetry = (initialPage = 1, limit = 20, refreshInterval = 1000) => {
   const [data, setData] = useState([]);
@@ -13,9 +13,11 @@ const usePaginatedTelemetry = (initialPage = 1, limit = 20, refreshInterval = 10
     endTime: null,
     anomaly: null
   });
+  const [pauseRealtimeUpdates, setPauseRealtimeUpdates] = useState(false);
 
-  const fetchData = async (pageToFetch = page) => {
+  const fetchData = useCallback(async (pageToFetch = page) => {
     try {
+      setLoading(true);
       const params = { page: pageToFetch, limit };
       
       if (filters.startTime) params.start_time = filters.startTime;
@@ -32,33 +34,64 @@ const usePaginatedTelemetry = (initialPage = 1, limit = 20, refreshInterval = 10
       setTotal(res.total);
       setTotalPages(res.total_pages);
       setError(null);
-      setLoading(false);
     } catch (err) {
       console.error("Error fetching paginated telemetry:", err);
       setError(err.message);
+    } finally {
       setLoading(false);
     }
-  };
+  }, [page, limit, filters]);
 
   // Fetch on mount and whenever page, limit, or filters change
   useEffect(() => {
-    setLoading(true);
     fetchData();
-  }, [page, limit, filters]);
+  }, [fetchData]);
 
-  // Polling for real-time data if on page 1
+  // Set up WebSocket for real-time updates
   useEffect(() => {
-    if (page !== 1) return;
-
-    const interval = setInterval(() => {
-      fetchData(1);
-    }, refreshInterval);
-
-    return () => clearInterval(interval);
-  }, [page, limit, refreshInterval, filters]);
+    // Only use WebSocket updates on the first page and when not paused
+    if (page !== 1 || pauseRealtimeUpdates) return;
+    
+    // Subscribe to telemetry updates via WebSocket
+    const unsubscribe = subscribeTelemetry((newTelemetry) => {
+      // Only update if real-time updates are not paused
+      if (!pauseRealtimeUpdates) {
+        // Update the data array with the new telemetry item
+        // Only if we're on the first page and don't have active time filters
+        if (page === 1 && !filters.startTime && !filters.endTime) {
+          // Check if we should include this item based on anomaly filter
+          const shouldInclude = 
+            filters.anomaly === null || 
+            (filters.anomaly === true && newTelemetry.Anomaly) || 
+            (filters.anomaly === false && !newTelemetry.Anomaly);
+            
+          if (shouldInclude) {
+            setData(prevData => {
+              // Create a new array with the new telemetry at the beginning
+              const updatedData = [newTelemetry, ...prevData.slice(0, limit - 1)];
+              return updatedData;
+            });
+            
+            // Increment total count
+            setTotal(prevTotal => prevTotal + 1);
+            
+            // Recalculate total pages if needed
+            const newTotalPages = Math.ceil((total + 1) / limit);
+            if (newTotalPages !== totalPages) {
+              setTotalPages(newTotalPages);
+            }
+          }
+        }
+      }
+    });
+    
+    return () => {
+      unsubscribe(); // Clean up WebSocket listener
+    };
+  }, [page, limit, filters, total, totalPages, pauseRealtimeUpdates]);
 
   // Method to update filters
-  const updateFilters = (newFilters) => {
+  const updateFilters = useCallback((newFilters) => {
     setFilters(prev => ({
       ...prev,
       ...newFilters
@@ -68,7 +101,15 @@ const usePaginatedTelemetry = (initialPage = 1, limit = 20, refreshInterval = 10
     if (page !== 1) {
       setPage(1);
     }
-  };
+  }, [page]);
+
+  // Toggle pause real-time updates
+  const setPauseUpdates = useCallback((shouldPause) => {
+    setPauseRealtimeUpdates(shouldPause);
+  }, []);
+
+  // Check if real-time updates are active
+  const isRealtimeActive = page === 1 && !filters.startTime && !filters.endTime && !pauseRealtimeUpdates;
 
   return {
     data,
@@ -79,7 +120,10 @@ const usePaginatedTelemetry = (initialPage = 1, limit = 20, refreshInterval = 10
     error,
     setPage,
     filters,
-    updateFilters
+    updateFilters,
+    refreshData: fetchData,
+    setPauseUpdates,
+    isRealtimeActive
   };
 };
 

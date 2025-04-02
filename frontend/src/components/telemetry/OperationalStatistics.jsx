@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { getAggregatedTelemetry } from "../services/telemetryService";
+import { getAggregatedTelemetry } from "../../services/telemetryService";
 import { FiArrowUp, FiArrowDown, FiChevronDown } from "react-icons/fi";
 
 const OperationalStatistics = () => {

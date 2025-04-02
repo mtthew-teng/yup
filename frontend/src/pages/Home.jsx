@@ -1,10 +1,10 @@
 import React from "react";
-import TelemetryGraphMini from "../components/TelemetryGraphMini";
-import CurrentTelemetry from "../components/CurrentTelemetry";
-import OperationalStatistics from "../components/OperationalStatistics";
+import TelemetryGraphMini from "../components/telemetry/TelemetryGraphMini";
+import CurrentTelemetry from "../components/telemetry/CurrentTelemetry";
+import OperationalStatistics from "../components/telemetry/OperationalStatistics";
 import useTelemetry from "../hooks/useTelemetry";
 import useInitialTelemetry from "../hooks/useInitialTelemetry";
-import TelemetryTable from "../components/TelemetryTable";
+import TelemetryTable from "../components/telemetry/TelemetryTable";
 
 const Home = () => {
   const { telemetry, error, loading } = useTelemetry();
